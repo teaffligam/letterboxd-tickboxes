@@ -1,0 +1,193 @@
+// ==UserScript==
+// @name         Mark Downloaded, 4K Remux, Amazon, Netflix Movies on Letterboxd
+// @namespace    http://tampermonkey.net/
+// @version      2.0
+// @description  Marks movies as downloaded, 4K remuxed, Amazon, or Netflix on Letterboxd with toggle buttons and editable list UI.
+// @match        https://letterboxd.com/*
+// @icon         https://letterboxd.com/favicon.ico
+// @grant        GM_setValue
+// @grant        GM_getValue
+// ==/UserScript==
+
+(function () {
+    'use strict';
+
+// Downloaded:
+// Downloaded:
+const defaultDownloaded = ['psycho therapy: the shallow tale of a writer who decided to write about a serial killer', 'longlegs', 'novocaine', 'companion', 'the last stop in yuma county', 'lowlifes', 'cure', 'frankie freako', 'the invisible raptor', 'the substance', 'nosferatu', 'the monkey', 'heart eyes', 'mads', 'the rule of jenny pen', 'the damned', 'errementari: the blacksmith and the devil', 'starve acre', 'night silence', 'gosford park', 'glengarry glen ross', 'see how they run', 'in a violent nature', 'black bag', 'smile 2', 'late night with the devil'];
+
+// Remux 4K:
+const defaultRemux = ['pan\'s labyrinth', 'mulholland drive', 'mickey 17', 'abigail', 'companion', 'in a violent nature', 'terrifier 3', 'black bag', 'nosferatu', 'the substance', 'the count of monte cristo', 'longlegs', 'late night with the devil', 'smile 2', 'the dead zone', '28 days later', 'kingdom of heaven', 'se7en', 'the shining'];
+
+// Amazon:
+const defaultAmazon = ['locked', 'die alone', 'the secret in their eyes', 'the vourdalak'];
+
+// Netflix:
+const defaultNetflix = ['bird box', 'reptile', 'don\'t listen', 'god\'s crooked lines', 'errementari: the blacksmith and the devil', 'carter'];
+
+
+    let downloadedTitles = [...defaultDownloaded];
+    let remuxTitles = [...defaultRemux];
+    let amazonTitles = [...defaultAmazon];
+    let netflixTitles = [...defaultNetflix];
+    saveData();
+
+    function saveData() {
+        GM_setValue('downloadedTitles', downloadedTitles);
+        GM_setValue('remuxTitles', remuxTitles);
+        GM_setValue('amazonTitles', amazonTitles);
+        GM_setValue('netflixTitles', netflixTitles);
+    }
+
+    function createStatusButton(movieTitle) {
+        const isDownloaded = downloadedTitles.includes(movieTitle);
+        const isRemux = remuxTitles.includes(movieTitle);
+        const isAmazon = amazonTitles.includes(movieTitle);
+        const isNetflix = netflixTitles.includes(movieTitle);
+
+        const container = document.createElement('div');
+        container.className = 'downloaded-container';
+        container.style.cssText = `position:absolute;top:5px;left:5px;display:flex;gap:4px;z-index:1000;pointer-events:auto;`;
+
+        const buttons = [
+            { title: '✓', label: 'Downloaded', color: 'orange', state: isDownloaded, list: downloadedTitles },
+            { title: '4K', label: '4K Remux', color: '#00BFFF', state: isRemux, list: remuxTitles },
+            { title: 'AZ', label: 'Amazon', color: '#4B0082', state: isAmazon, list: amazonTitles },
+            { title: 'NF', label: 'Netflix', color: '#E50914', state: isNetflix, list: netflixTitles }
+        ];
+
+        buttons.forEach(({ title, label, color, state, list }) => {
+            const btn = document.createElement('span');
+            btn.title = `Mark as ${label}`;
+            btn.style.cssText = `
+                width: 28px; height: 20px; display: flex; justify-content: center; align-items: center;
+                font-size: 11px; border-radius: 4px; cursor: pointer;
+                background-color: ${state ? color : 'rgba(255,255,255,0.8)'};
+                color: ${state ? 'white' : color};
+                font-weight: bold; user-select: none;
+            `;
+            btn.textContent = title;
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const index = list.indexOf(movieTitle);
+                if (index === -1) list.push(movieTitle);
+                else list.splice(index, 1);
+                saveData();
+                updateSingleMovieStatus(movieTitle);
+            });
+            container.appendChild(btn);
+        });
+
+        return container;
+    }
+
+    function updateSingleMovieStatus(movieTitle) {
+        document.querySelectorAll('li.poster-container, li.listitem.poster-container').forEach(item => {
+            const title = item.querySelector('.react-component.poster')?.getAttribute('data-film-name')?.toLowerCase();
+            if (title !== movieTitle) return;
+            const oldContainer = item.querySelector('.downloaded-container');
+            if (oldContainer) oldContainer.remove();
+            const newButtons = createStatusButton(movieTitle);
+            item.style.position = 'relative';
+            item.appendChild(newButtons);
+        });
+    }
+
+    function markDownloadedMovies() {
+        const movieItems = document.querySelectorAll('li.poster-container, li.listitem.poster-container');
+        movieItems.forEach(item => {
+            const movieTitle = item.querySelector('.react-component.poster')?.getAttribute('data-film-name')?.toLowerCase();
+            if (!movieTitle) return;
+            if (!item.querySelector('.downloaded-container')) {
+                const container = createStatusButton(movieTitle);
+                item.style.position = 'relative';
+                item.appendChild(container);
+            }
+        });
+    }
+
+    let debounceTimeout;
+    function debouncedMarkDownloaded() {
+        clearTimeout(debounceTimeout);
+        debounceTimeout = setTimeout(() => {
+            if (document.readyState === 'complete') {
+                markDownloadedMovies();
+            }
+        }, 150);
+    }
+
+    debouncedMarkDownloaded();
+    const observer = new MutationObserver(debouncedMarkDownloaded);
+    observer.observe(document.body, { childList: true, subtree: true });
+
+    function createEditorButton() {
+        const btn = document.createElement('button');
+        btn.textContent = 'View/Edit Titles';
+        btn.style.cssText = `position:fixed;top:60px;left:20px;z-index:9999;padding:8px 16px;background:#4CAF50;color:white;border:none;cursor:pointer;`;
+
+        const wrapper = document.createElement('div');
+        wrapper.style.cssText = `display:none;flex-direction:column;position:fixed;top:50%;left:50%;transform:translate(-50%, -50%);z-index:10000;width:80%;height:60%;background:white;border:1px solid #ccc;padding:10px;`;
+
+        const textarea = document.createElement('textarea');
+        textarea.style.cssText = `flex:1;width:100%;resize:none;font-family:monospace;`;
+
+        const clearBtn = document.createElement('button');
+        clearBtn.textContent = 'Clear All Titles';
+        clearBtn.style.cssText = `margin-top:10px;background:#f44336;color:white;border:none;padding:6px 12px;cursor:pointer;align-self:flex-start;`;
+        clearBtn.addEventListener('click', () => {
+            downloadedTitles = [];
+            remuxTitles = [];
+            amazonTitles = [];
+            netflixTitles = [];
+            saveData();
+            textarea.value = '';
+            markDownloadedMovies();
+        });
+
+        wrapper.appendChild(textarea);
+        wrapper.appendChild(clearBtn);
+        document.body.appendChild(wrapper);
+
+        let mode = 'hidden';
+        btn.addEventListener('click', () => {
+            if (mode === 'hidden') {
+                wrapper.style.display = 'flex';
+                btn.textContent = 'Save & Close';
+
+                function escapeTitle(t) {
+                    return `'${t.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'`;
+                }
+
+                textarea.value =
+                    `// Downloaded:\nconst defaultDownloaded = [${downloadedTitles.map(escapeTitle).join(', ')}];\n\n` +
+                    `// Remux 4K:\nconst defaultRemux = [${remuxTitles.map(escapeTitle).join(', ')}];\n\n` +
+                    `// Amazon:\nconst defaultAmazon = [${amazonTitles.map(escapeTitle).join(', ')}];\n\n` +
+                    `// Netflix:\nconst defaultNetflix = [${netflixTitles.map(escapeTitle).join(', ')}];`;
+
+                mode = 'visible';
+            } else {
+                const text = textarea.value;
+
+                function extractArray(label) {
+                    const match = text.match(new RegExp(`// ${label}:\\s*const .*?= \\[([^\\]]*)\\];`, 's'));
+                    return match ? match[1].split(',').map(s => s.trim().replace(/^'|'$/g, '')).filter(Boolean) : [];
+                }
+
+                downloadedTitles = extractArray('Downloaded');
+                remuxTitles = extractArray('Remux 4K');
+                amazonTitles = extractArray('Amazon');
+                netflixTitles = extractArray('Netflix');
+
+                saveData();
+                markDownloadedMovies();
+                wrapper.style.display = 'none';
+                btn.textContent = 'View/Edit Titles';
+                mode = 'hidden';
+            }
+        });
+
+        document.body.appendChild(btn);
+    }
+
+    createEditorButton();
+})();
